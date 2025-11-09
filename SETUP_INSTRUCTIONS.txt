@@ -1,0 +1,95 @@
+╔══════════════════════════════════════════════════════════════╗
+║   MINUTESERV BACKEND - COMPLETE SETUP INSTRUCTIONS           ║
+║   100% Responsibility - Production Ready                      ║
+╚══════════════════════════════════════════════════════════════╝
+
+STEP 1: INSTALL DEPENDENCIES
+────────────────────────────
+cd minuteservbackend
+npm install
+
+STEP 2: CONFIGURE ENVIRONMENT
+─────────────────────────────
+cp .env.example .env
+
+Edit .env file with:
+- SUPABASE_URL (from Supabase Dashboard → Settings → API)
+- SUPABASE_SERVICE_ROLE_KEY (Service Role Key, NOT anon key!)
+- RAZORPAY_KEY_ID (from Razorpay Dashboard)
+- RAZORPAY_KEY_SECRET (from Razorpay Dashboard)
+- JWT_SECRET (generate a strong random string)
+
+STEP 3: SETUP DATABASE IN SUPABASE
+────────────────────────────────────
+1. Go to: https://app.supabase.com
+2. Select your project
+3. Click "SQL Editor" in left sidebar
+4. Click "New Query"
+5. Open: src/config/database.sql
+6. Copy ALL content (300+ lines)
+7. Paste into Supabase SQL Editor
+8. Click "Run" button
+9. Wait for: "✅ Database schema created successfully!"
+
+Verify:
+- Go to "Table Editor" → Should see 10 tables
+- Check promo_codes table has 3 codes
+- Check admin_users table has 1 user
+
+STEP 4: SEED SERVICES
+──────────────────────
+npm run seed-services
+
+This reads from ../src/data/services.json and inserts all services.
+
+STEP 5: CREATE ADMIN USER
+──────────────────────────
+npm run create-admin admin@minuteserv.com your-secure-password "Admin Name"
+
+Or use default (CHANGE PASSWORD!):
+- Email: admin@minuteserv.com
+- Password: admin123 (placeholder - MUST CHANGE!)
+
+STEP 6: TEST DATABASE
+─────────────────────
+npm run test-db
+
+Should show:
+✅ Connection successful
+✅ All 10 tables exist
+✅ Promo codes found
+✅ Admin user found
+✅ Services count: X
+
+STEP 7: START SERVER
+────────────────────
+npm run dev
+
+Expected output:
+✅ Supabase connection successful
+🚀 Minuteserv API Server running on port 3000
+
+STEP 8: TEST API
+────────────────
+# Health check
+curl http://localhost:3000/health
+
+# Send OTP (OTP shown in console in dev mode)
+curl -X POST http://localhost:3000/api/v1/auth/send-otp \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+911234567890"}'
+
+───────────────────────────────────────────────────────────────
+✅ SETUP COMPLETE - BACKEND IS 100% READY
+───────────────────────────────────────────────────────────────
+
+All features implemented:
+✅ Authentication (OTP + JWT)
+✅ Payment Integration (Razorpay)
+✅ Booking System
+✅ Checkout Flow
+✅ Admin Panel
+✅ Partner Management
+✅ Service Management
+
+Next: Connect frontend to backend API!
