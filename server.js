@@ -32,7 +32,7 @@ const allowedOrigins = [
   'http://localhost:5177', // Admin panel alternative port
   'http://localhost:5175',
   'http://localhost:5176',
-  'https://minuteserv.com/',
+  'https://minuteserv.com',
 ];
 
 const corsOptions = {
