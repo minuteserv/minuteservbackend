@@ -33,6 +33,7 @@ const allowedOrigins = [
   'http://localhost:5175',
   'http://localhost:5176',
   'https://minuteserv.com',
+  'https://admin.minuteserv.com'
 ];
 
 const corsOptions = {
