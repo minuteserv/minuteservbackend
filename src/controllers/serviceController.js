@@ -1,6 +1,8 @@
 const supabase = require('../config/supabase');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../utils/logger');
+const path = require('path');
+const fs = require('fs');
 
 // Simple in-memory cache (for development)
 // In production, use Redis
@@ -96,8 +98,55 @@ async function getAllServices(req, res) {
     const { data: services, error } = await query;
 
     if (error) {
-      logger.error('Get all services error:', error);
-      throw new Error('Failed to fetch services');
+      logger.error('Get all services error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      logger.info('Falling back to services.json file');
+      
+      // Fallback to services.json
+      try {
+        const servicesJsonPath = path.join(__dirname, '../../../../src/data/services.json');
+        const servicesData = JSON.parse(fs.readFileSync(servicesJsonPath, 'utf8'));
+        
+        // Flatten the services from the JSON structure
+        const allServices = [];
+        if (servicesData.tiers) {
+          servicesData.tiers.forEach(tier => {
+            tier.categories.forEach(category => {
+              category.items.forEach(item => {
+                allServices.push({
+                  id: `${tier.tier}-${category.category}-${item.name}`.toLowerCase().replace(/\s+/g, '-'),
+                  name: item.name,
+                  category: category.category,
+                  tier: tier.tier,
+                  brand: item.brand || null,
+                  productCost: item.productCost || 0,
+                  marketPrice: item.marketPrice || null,
+                  durationMinutes: item.durationMinutes || 60,
+                  image: item.image || null,
+                });
+              });
+            });
+          });
+        }
+        
+        // Apply filters
+        let filteredServices = allServices;
+        if (tier) {
+          filteredServices = filteredServices.filter(s => s.tier === tier);
+        }
+        if (category) {
+          filteredServices = filteredServices.filter(s => s.category === category);
+        }
+        
+        return successResponse(res, filteredServices);
+      } catch (fallbackError) {
+        logger.error('Fallback to services.json also failed:', fallbackError);
+        return successResponse(res, []);
+      }
     }
 
     // Transform to match frontend format

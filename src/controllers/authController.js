@@ -1,5 +1,5 @@
 const supabase = require('../config/supabase');
-const { sendOTP, verifyOTP } = require('../services/otpService');
+const { sendOTP, verifyOTP } = require('../services/interaktOTPService');
 const { generateAccessToken, generateRefreshToken } = require('../utils/jwt');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../utils/logger');
@@ -26,7 +26,8 @@ async function sendOTPHandler(req, res) {
     return successResponse(res, {
       expires_in: result.expires_in,
       ...(result.warning && { warning: result.warning }),
-      ...(result.message_sid && { message_sid: result.message_sid })
+      ...(result.message_sid && { message_sid: result.message_sid }),
+      ...(result.otp_code && { otp_code: result.otp_code }) // Include OTP in dev mode for testing
     }, 'OTP sent successfully');
   } catch (error) {
     logger.error('Send OTP handler error:', error);
