@@ -3,6 +3,7 @@ const { successResponse, errorResponse } = require('../utils/response');
 const { validatePromoCode } = require('../services/promoService');
 const { calculatePricing } = require('../utils/pricing');
 const { generateTimeSlots } = require('../utils/timeSlots');
+const pointsService = require('../services/pointsService');
 const logger = require('../utils/logger');
 
 /**
@@ -11,7 +12,7 @@ const logger = require('../utils/logger');
  */
 async function prepareCheckout(req, res) {
   try {
-    const { service_ids, promo_code, address_id, booking_date } = req.body;
+    const { service_ids, promo_code, address_id, booking_date, points_to_use } = req.body;
     const userId = req.user.id;
 
     if (!service_ids || !Array.isArray(service_ids) || service_ids.length === 0) {
@@ -53,10 +54,51 @@ async function prepareCheckout(req, res) {
       );
     }
 
-    // Calculate final pricing with promo
+    // Calculate points discount if points are being used
+    let pointsDiscount = 0;
+    let pointsUsed = 0;
+    let userPointsBalance = 0;
+    
+    if (points_to_use && points_to_use > 0) {
+      try {
+        const balance = await pointsService.getBalance(userId);
+        userPointsBalance = balance.points_balance;
+        
+        // Validate points usage
+        if (points_to_use > userPointsBalance) {
+          return errorResponse(res, { 
+            message: `Insufficient points. You have ${userPointsBalance} points available.` 
+          }, 400);
+        }
+        
+        if (points_to_use < 100 || points_to_use % 100 !== 0) {
+          return errorResponse(res, { 
+            message: 'Points must be a multiple of 100 (minimum 100 points)' 
+          }, 400);
+        }
+        
+        // Calculate discount (100 points = ₹10)
+        pointsDiscount = points_to_use / 10;
+        pointsUsed = points_to_use;
+      } catch (pointsError) {
+        logger.error('Error getting points balance:', pointsError);
+        // Continue without points discount if error
+      }
+    } else {
+      // Get balance for display even if not using points
+      try {
+        const balance = await pointsService.getBalance(userId);
+        userPointsBalance = balance.points_balance;
+      } catch (error) {
+        // Ignore error, balance will be 0
+      }
+    }
+
+    // Calculate final pricing with promo and points
+    const totalDiscount = promoResult.discount + pointsDiscount;
     const finalPricing = calculatePricing(
       servicesWithQuantity,
-      promoResult.discount
+      totalDiscount
     );
 
     // Get address if provided
@@ -91,6 +133,12 @@ async function prepareCheckout(req, res) {
         valid: promoResult.valid,
         message: promoResult.message
       },
+      points: {
+        balance: userPointsBalance,
+        points_used: pointsUsed,
+        discount: pointsDiscount,
+        can_use: userPointsBalance >= 100
+      },
       available_time_slots: generateTimeSlots(),
       address
     });
@@ -117,6 +165,7 @@ async function confirmBooking(req, res) {
       customer_email,
       services, // Array of {service_id, quantity}
       promo_code,
+      points_to_use,
       cancellation_policy_accepted
     } = req.body;
 
@@ -245,7 +294,51 @@ async function confirmBooking(req, res) {
       }
     }
 
-    const pricing = calculatePricing(servicesJson, promoDiscount);
+    // Calculate points discount if points are being used
+    let pointsDiscount = 0;
+    let pointsUsed = 0;
+    let redemptionId = null;
+    
+    if (points_to_use && points_to_use > 0) {
+      try {
+        const balance = await pointsService.getBalance(userId);
+        
+        // Validate points usage
+        if (points_to_use > balance.points_balance) {
+          return errorResponse(res, { 
+            message: `Insufficient points. You have ${balance.points_balance} points available.` 
+          }, 400);
+        }
+        
+        if (points_to_use < 100 || points_to_use % 100 !== 0) {
+          return errorResponse(res, { 
+            message: 'Points must be a multiple of 100 (minimum 100 points)' 
+          }, 400);
+        }
+        
+        // Redeem points
+        const redemptionResult = await pointsService.redeemPoints(userId, points_to_use);
+        pointsDiscount = redemptionResult.discountAmount;
+        pointsUsed = points_to_use;
+        
+        // Create redemption record
+        const redemption = await pointsService.createRedemption(
+          userId,
+          pointsUsed,
+          pointsDiscount,
+          'apply_to_booking'
+        );
+        redemptionId = redemption.id;
+      } catch (pointsError) {
+        logger.error('Error redeeming points:', pointsError);
+        return errorResponse(res, { 
+          message: `Failed to redeem points: ${pointsError.message}` 
+        }, 400);
+      }
+    }
+
+    const totalDiscount = promoDiscount + pointsDiscount;
+    const pricing = calculatePricing(servicesJson, totalDiscount);
 
     // Validate pricing
     if (!pricing || typeof pricing.subtotal !== 'number' || typeof pricing.grand_total !== 'number') {
@@ -275,6 +368,8 @@ async function confirmBooking(req, res) {
         payment_status: 'pending',
         total_price: pricing.subtotal || 0,
         discount: pricing.discount || 0,
+        points_discount: pointsDiscount || 0,
+        points_used: pointsUsed || 0,
         tax: pricing.tax || 0,
         grand_total: pricing.grand_total || 0,
         partner_payout: partnerPayout,
@@ -296,6 +391,24 @@ async function confirmBooking(req, res) {
         code: bookingError.code,
         fullError: bookingError
       });
+      
+      // If points were redeemed but booking failed, refund points
+      if (redemptionId) {
+        try {
+          // Refund points by creating a new transaction
+          await pointsService.awardPoints(
+            userId,
+            pointsUsed,
+            'redemption_refund',
+            redemptionId,
+            `Points refunded due to booking failure`
+          );
+          logger.info(`Refunded ${pointsUsed} points to user ${userId} due to booking failure`);
+        } catch (refundError) {
+          logger.error('Failed to refund points:', refundError);
+        }
+      }
+      
       // Return detailed error for debugging
       const errorDetails = {
         message: 'Failed to create booking',
@@ -308,6 +421,16 @@ async function confirmBooking(req, res) {
       logger.error('Create booking error details:', errorDetails);
       
       return errorResponse(res, errorDetails, 500);
+    }
+
+    // Apply redemption to booking if points were used
+    if (redemptionId) {
+      try {
+        await pointsService.applyRedemption(redemptionId, booking.id);
+      } catch (applyError) {
+        logger.error('Failed to apply redemption to booking:', applyError);
+        // Don't fail the booking if redemption application fails
+      }
     }
 
     // Handle payment based on method

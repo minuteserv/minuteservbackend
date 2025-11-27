@@ -1,6 +1,7 @@
 const supabase = require('../../config/supabase');
 const { successResponse, errorResponse } = require('../../utils/response');
 const logger = require('../../utils/logger');
+const pointsService = require('../../services/pointsService');
 
 /**
  * Get all bookings (admin)
@@ -80,6 +81,13 @@ async function updateBookingStatus(req, res) {
       return errorResponse(res, { message: 'Status is required' }, 400);
     }
 
+    // Get current booking to check if status is changing to 'completed'
+    const { data: currentBooking } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const { data: booking, error } = await supabase
       .from('bookings')
       .update({
@@ -93,6 +101,24 @@ async function updateBookingStatus(req, res) {
     if (error) {
       logger.error('Update booking status error:', error);
       throw new Error('Failed to update booking status');
+    }
+
+    // Award points when booking is completed
+    if (status === 'completed' && currentBooking?.status !== 'completed') {
+      try {
+        const pointsToAward = pointsService.calculatePointsForBooking(booking.grand_total);
+        await pointsService.awardPoints(
+          booking.user_id,
+          pointsToAward,
+          'booking',
+          booking.id,
+          `Points earned for booking #${booking.booking_number}`
+        );
+        logger.info(`Awarded ${pointsToAward} points to user ${booking.user_id} for booking ${booking.booking_number}`);
+      } catch (pointsError) {
+        // Log error but don't fail the booking status update
+        logger.error('Failed to award points:', pointsError);
+      }
     }
 
     return successResponse(res, booking, 'Booking status updated');

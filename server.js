@@ -14,6 +14,7 @@ const promoRoutes = require('./src/routes/promos');
 const bookingRoutes = require('./src/routes/bookings');
 const paymentRoutes = require('./src/routes/payments');
 const contactRoutes = require('./src/routes/contact');
+const loyaltyRoutes = require('./src/routes/loyalty');
 const adminRoutes = require('./src/routes/admin');
 
 // Import middleware
@@ -115,6 +116,7 @@ app.use('/api/v1/promos', promoRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/contact', contactRoutes);
+app.use('/api/v1/loyalty', loyaltyRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
 // 404 handler
