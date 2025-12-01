@@ -20,6 +20,35 @@ function generateOTP() {
 }
 
 /**
+ * Normalize phone number to standard format (+91XXXXXXXXXX)
+ * Handles various input formats and returns normalized phone number
+ */
+function normalizePhoneNumber(phoneNumber) {
+  // Remove any spaces or dashes
+  let cleaned = phoneNumber.replace(/[\s-]/g, '');
+  
+  // Normalize to +91XXXXXXXXXX format
+  if (cleaned.startsWith('+91')) {
+    return cleaned;
+  } else if (cleaned.startsWith('91')) {
+    return '+' + cleaned;
+  } else if (cleaned.startsWith('0')) {
+    return '+91' + cleaned.substring(1);
+  } else {
+    // Default to India
+    return '+91' + cleaned;
+  }
+}
+
+/**
+ * Check if phone number is the test number (9999999999)
+ */
+function isTestPhoneNumber(phoneNumber) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  return normalized === '+919999999999';
+}
+
+/**
  * Format phone number for Interakt API
  * Input: "+919876543210"
  * Output: { countryCode: "+91", phoneNumber: "9876543210" }
@@ -64,6 +93,9 @@ async function sendOTP(phoneNumber) {
     // Check rate limit (disabled in development/test, 3 per hour in production)
     const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
     
+    // Normalize phone number for consistent handling
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    
     if (!isDevelopment) {
       const maxOTPsPerHour = 3;
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -71,7 +103,7 @@ async function sendOTP(phoneNumber) {
       const { data: recentOTPs } = await supabase
         .from('otp_verifications')
         .select('id')
-        .eq('phone_number', phoneNumber)
+        .eq('phone_number', normalizedPhoneNumber)
         .gte('created_at', oneHourAgo.toISOString());
 
       if (recentOTPs && recentOTPs.length >= maxOTPsPerHour) {
@@ -80,16 +112,16 @@ async function sendOTP(phoneNumber) {
     } else {
       logger.info(`🔧 Development mode: Rate limiting disabled for testing`);
     }
-
-    // Generate 6-digit OTP
-    const otpCode = generateOTP();
+    
+    // Generate 6-digit OTP (use test OTP for test phone number)
+    const otpCode = isTestPhoneNumber(normalizedPhoneNumber) ? '123456' : generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Store OTP in database first
     const { data: otpRecord, error: dbError } = await supabase
       .from('otp_verifications')
       .insert({
-        phone_number: phoneNumber,
+        phone_number: normalizedPhoneNumber,
         otp_code: otpCode,
         expires_at: expiresAt.toISOString(),
         is_verified: false
@@ -261,11 +293,32 @@ async function verifyOTP(phoneNumber, otpCode) {
       throw new Error('OTP must be 6 digits');
     }
 
-    // Find valid OTP
+    // Normalize phone number for test check
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    
+    // Test bypass: If test phone number with test OTP, bypass database check
+    if (isTestPhoneNumber(normalizedPhoneNumber) && otpCode === '123456') {
+      logger.info(`✅ Test OTP bypass: ${normalizedPhoneNumber} with OTP 123456`);
+      
+      // Still mark any existing OTP records as verified for consistency
+      await supabase
+        .from('otp_verifications')
+        .update({ is_verified: true })
+        .eq('phone_number', normalizedPhoneNumber)
+        .eq('otp_code', '123456')
+        .eq('is_verified', false);
+      
+      return {
+        success: true,
+        verified: true
+      };
+    }
+
+    // Normal OTP verification flow for all other phone numbers
     const { data: otpRecord, error: findError } = await supabase
       .from('otp_verifications')
       .select('*')
-      .eq('phone_number', phoneNumber)
+      .eq('phone_number', normalizedPhoneNumber)
       .eq('otp_code', otpCode)
       .eq('is_verified', false)
       .gt('expires_at', new Date().toISOString())
