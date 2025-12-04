@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
-const { sendOTP, verifyOTP } = require('../services/interaktOTPService');
+// Using MSG91 OTP Service instead of Interakt
+const { sendOTP, verifyOTP, resendOTP } = require('../services/msg91OTPService');
 const { generateAccessToken, generateRefreshToken } = require('../utils/jwt');
 const { successResponse, errorResponse } = require('../utils/response');
 const logger = require('../utils/logger');
@@ -269,9 +270,45 @@ async function logoutHandler(req, res) {
   }
 }
 
+/**
+ * Resend OTP to phone number
+ * Uses MSG91's retry endpoint to resend OTP
+ */
+async function resendOTPHandler(req, res) {
+  try {
+    const { phone_number, retry_type } = req.body;
+
+    if (!phone_number) {
+      return errorResponse(res, { message: 'Phone number is required' }, 400);
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phone_number)) {
+      return errorResponse(res, { message: 'Invalid phone number format' }, 400);
+    }
+
+    // retry_type can be 'text' (SMS) or 'voice' (voice call), default to 'text'
+    const retryType = retry_type || 'text';
+    
+    const result = await resendOTP(phone_number, retryType);
+
+    return successResponse(res, {
+      type: result.type,
+      ...(result.request_id && { request_id: result.request_id })
+    }, result.message || 'OTP resent successfully');
+  } catch (error) {
+    logger.error('Resend OTP handler error:', error);
+    const statusCode = error.message.includes('No OTP') ? 400 : 
+                      error.message.includes('limit') ? 429 : 500;
+    return errorResponse(res, error, statusCode);
+  }
+}
+
 module.exports = {
   sendOTPHandler,
   verifyOTPHandler,
+  resendOTPHandler,
   refreshTokenHandler,
   getCurrentUser,
   logoutHandler

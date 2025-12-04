@@ -112,7 +112,7 @@ async function sendOTP(phoneNumber) {
     } else {
       logger.info(`🔧 Development mode: Rate limiting disabled for testing`);
     }
-    
+
     // Generate 6-digit OTP (use test OTP for test phone number)
     const otpCode = isTestPhoneNumber(normalizedPhoneNumber) ? '123456' : generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes

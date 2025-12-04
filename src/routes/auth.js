@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   sendOTPHandler,
   verifyOTPHandler,
+  resendOTPHandler,
   refreshTokenHandler,
   getCurrentUser,
   logoutHandler
@@ -12,6 +13,7 @@ const { auth } = require('../middleware/auth');
 // Public routes
 router.post('/send-otp', sendOTPHandler);
 router.post('/verify-otp', verifyOTPHandler);
+router.post('/resend-otp', resendOTPHandler);
 router.post('/refresh-token', refreshTokenHandler);
 
 // Protected routes
