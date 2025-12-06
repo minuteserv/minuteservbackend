@@ -373,15 +373,34 @@ async function updateDocument(req, res) {
     const updateData = {};
 
     if (document_name) updateData.document_name = document_name;
-    if (document_category !== undefined) updateData.document_category = document_category;
-    if (description !== undefined) updateData.description = description;
-    if (tags !== undefined) {
-      updateData.tags = typeof tags === 'string' ? tags.split(',').map(t => t.trim()) : tags;
+    if (document_category !== undefined) {
+      updateData.document_category = document_category || null;
     }
-    if (related_entity_type !== undefined) updateData.related_entity_type = related_entity_type;
-    if (related_entity_id !== undefined) updateData.related_entity_id = related_entity_id;
-    if (expiry_date !== undefined) updateData.expiry_date = expiry_date;
+    if (description !== undefined) {
+      updateData.description = description || null;
+    }
+    if (tags !== undefined) {
+      if (tags === '' || (Array.isArray(tags) && tags.length === 0)) {
+        updateData.tags = null;
+      } else {
+        updateData.tags = typeof tags === 'string' ? tags.split(',').map(t => t.trim()).filter(t => t) : tags;
+      }
+    }
+    if (related_entity_type !== undefined) {
+      updateData.related_entity_type = related_entity_type || null;
+    }
+    if (related_entity_id !== undefined) {
+      updateData.related_entity_id = related_entity_id || null;
+    }
+    if (expiry_date !== undefined) {
+      updateData.expiry_date = expiry_date || null;
+    }
     if (is_archived !== undefined) updateData.is_archived = is_archived;
+
+    // Check if there's anything to update
+    if (Object.keys(updateData).length === 0) {
+      return errorResponse(res, { message: 'No fields to update' }, 400);
+    }
 
     const { data: document, error } = await supabase
       .from('business_documents')
@@ -392,7 +411,12 @@ async function updateDocument(req, res) {
 
     if (error) {
       logger.error('Update document error:', error);
-      throw new Error('Failed to update document');
+      logger.error('Update document error details:', JSON.stringify(error, null, 2));
+      return errorResponse(res, { 
+        message: 'Failed to update document',
+        error: error.message || 'Database error',
+        details: process.env.NODE_ENV === 'development' ? error : undefined
+      }, 500);
     }
 
     if (!document) {
