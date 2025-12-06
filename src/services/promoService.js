@@ -46,15 +46,51 @@ async function validatePromoCode(code, orderAmount, userId = null) {
       };
     }
 
-    // Check usage limit (per user)
-    if (promo.usage_limit && userId) {
-      // TODO: Check user's usage count from promo_code_usage table
-      // For now, skip this check
+    // Check usage limit per user
+    if (userId && promo.usage_limit_per_user) {
+      const { count: userUsageCount } = await supabase
+        .from('promo_code_usage')
+        .select('*', { count: 'exact', head: true })
+        .eq('promo_code_id', promo.id)
+        .eq('user_id', userId);
+
+      if (userUsageCount >= promo.usage_limit_per_user) {
+        return {
+          valid: false,
+          discount: 0,
+          message: 'You have already used this promo code'
+        };
+      }
     }
 
-    // Check total usage limit
-    if (promo.total_usage_limit && promo.used_count >= promo.total_usage_limit) {
+    // Check first-time only restriction
+    if (promo.first_time_only && userId) {
+      const { count: userBookings } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .in('status', ['completed', 'confirmed']);
+
+      if (userBookings > 0) {
+        return {
+          valid: false,
+          discount: 0,
+          message: 'This promo code is only valid for first-time users'
+        };
+      }
+    }
+
+    // Check total usage limit - Use actual count from promo_code_usage for accuracy
+    if (promo.total_usage_limit) {
+      // Get actual usage count from promo_code_usage table for accurate check
+      const { count: actualUsageCount } = await supabase
+        .from('promo_code_usage')
+        .select('*', { count: 'exact', head: true })
+        .eq('promo_code_id', promo.id);
+
+      if ((actualUsageCount || 0) >= promo.total_usage_limit) {
       return { valid: false, discount: 0, message: 'Promo code usage limit reached' };
+      }
     }
 
     // Calculate discount
@@ -74,6 +110,7 @@ async function validatePromoCode(code, orderAmount, userId = null) {
       valid: true,
       discount: Math.floor(discount * 100) / 100, // Round to 2 decimals
       promo_code: promo.code,
+      promo_code_id: promo.id, // Include ID for usage recording
       discount_type: promo.discount_type,
       discount_value: promo.discount_value
     };
@@ -83,7 +120,35 @@ async function validatePromoCode(code, orderAmount, userId = null) {
   }
 }
 
+/**
+ * Record promo code usage after successful booking
+ */
+async function recordPromoCodeUsage(promoCodeId, userId, bookingId, discountAmount, orderAmount) {
+  try {
+    const { data, error } = await supabase
+      .from('promo_code_usage')
+      .insert([
+        {
+          promo_code_id: promoCodeId,
+          user_id: userId,
+          booking_id: bookingId,
+          discount_amount: discountAmount,
+          order_amount: orderAmount,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    logger.error('Record promo code usage error:', error);
+    throw error;
+  }
+}
+
 module.exports = {
-  validatePromoCode
+  validatePromoCode,
+  recordPromoCodeUsage
 };
 

@@ -98,10 +98,56 @@ async function getPaymentDetails(paymentId) {
   }
 }
 
+/**
+ * Process refund via Razorpay
+ */
+async function processRefund(paymentId, amount, notes = {}) {
+  if (!razorpay) {
+    throw new Error('Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env');
+  }
+  try {
+    const refundOptions = {
+      amount: Math.round(amount * 100), // Convert to paise
+      notes: notes,
+    };
+
+    const refund = await razorpay.payments.refund(paymentId, refundOptions);
+
+    return {
+      success: true,
+      refund_id: refund.id,
+      amount: refund.amount / 100, // Convert back to rupees
+      status: refund.status,
+      created_at: refund.created_at,
+    };
+  } catch (error) {
+    logger.error('Process Razorpay refund error:', error);
+    throw new Error(`Failed to process refund: ${error.message || 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get refund details from Razorpay
+ */
+async function getRefundDetails(refundId) {
+  if (!razorpay) {
+    throw new Error('Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env');
+  }
+  try {
+    const refund = await razorpay.refunds.fetch(refundId);
+    return refund;
+  } catch (error) {
+    logger.error('Get refund details error:', error);
+    throw new Error('Failed to fetch refund details');
+  }
+}
+
 module.exports = {
   createOrder,
   verifySignature,
   verifyWebhookSignature,
-  getPaymentDetails
+  getPaymentDetails,
+  processRefund,
+  getRefundDetails,
 };
 

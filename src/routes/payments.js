@@ -5,7 +5,10 @@ const {
   verifyPayment,
   handleWebhook,
   getPaymentStatus,
-  getAllPayments
+  getAllPayments,
+  getPaymentStats,
+  markPaymentAsPaid,
+  markBookingPaymentAsPaid,
 } = require('../controllers/paymentController');
 const { auth } = require('../middleware/auth');
 const { adminAuth } = require('../middleware/adminAuth');
@@ -13,8 +16,10 @@ const { adminAuth } = require('../middleware/adminAuth');
 // Webhook doesn't require auth (Razorpay calls it)
 router.post('/webhook', handleWebhook);
 
-// Admin routes (no auth required for now, but should be adminAuth in production)
+// Admin routes
+router.get('/stats', adminAuth, getPaymentStats);
 router.get('/', adminAuth, getAllPayments);
+router.patch('/:id/mark-paid', adminAuth, markPaymentAsPaid);
 
 // Protected routes
 router.post('/create-order', auth, createPaymentOrder);

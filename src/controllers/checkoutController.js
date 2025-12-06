@@ -1,6 +1,6 @@
 const supabase = require('../config/supabase');
 const { successResponse, errorResponse } = require('../utils/response');
-const { validatePromoCode } = require('../services/promoService');
+const { validatePromoCode, recordPromoCodeUsage } = require('../services/promoService');
 const { calculatePricing } = require('../utils/pricing');
 const { generateTimeSlots } = require('../utils/timeSlots');
 const pointsService = require('../services/pointsService');
@@ -281,16 +281,19 @@ async function confirmBooking(req, res) {
 
     // Calculate pricing
     let promoDiscount = 0;
+    let promoCodeId = null;
+    let promoResultWithAmount = null;
     if (promo_code) {
       const promoResult = await validatePromoCode(promo_code, 0, userId);
       if (promoResult.valid) {
         const pricingWithoutPromo = calculatePricing(servicesJson);
-        const promoResultWithAmount = await validatePromoCode(
+        promoResultWithAmount = await validatePromoCode(
           promo_code,
           pricingWithoutPromo.subtotal,
           userId
         );
         promoDiscount = promoResultWithAmount.discount;
+        promoCodeId = promoResultWithAmount.promo_code_id;
       }
     }
 
@@ -430,6 +433,24 @@ async function confirmBooking(req, res) {
       } catch (applyError) {
         logger.error('Failed to apply redemption to booking:', applyError);
         // Don't fail the booking if redemption application fails
+      }
+    }
+
+    // Record promo code usage if promo code was used
+    if (promo_code && promoResultWithAmount && promoResultWithAmount.valid && promoCodeId) {
+      try {
+        await recordPromoCodeUsage(
+          promoCodeId,
+          userId,
+          booking.id,
+          promoDiscount,
+          pricing.subtotal
+        );
+        logger.info(`Recorded promo code usage: ${promo_code} for booking ${booking.id}`);
+      } catch (promoUsageError) {
+        logger.error('Failed to record promo code usage:', promoUsageError);
+        // Don't fail the booking if usage recording fails, but log for manual reconciliation
+        // The booking was successful, so we'll need to handle this separately
       }
     }
 
