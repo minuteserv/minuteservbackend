@@ -48,7 +48,8 @@ async function getServiceCatalog(req, res) {
         product_cost: parseFloat(service.product_cost),
         market_price: service.market_price ? parseFloat(service.market_price) : null,
         duration_minutes: service.duration_minutes,
-        image_url: service.image_url
+        image_url: service.image_url,
+        about: service.about || null
       });
     });
 
@@ -160,6 +161,7 @@ async function getAllServices(req, res) {
       marketPrice: service.market_price ? parseFloat(service.market_price) : null,
       durationMinutes: service.duration_minutes || 60,
       image: service.image_url || null,
+      about: service.about || null,
     }));
 
     return successResponse(res, transformedServices);
@@ -196,7 +198,8 @@ async function getServiceById(req, res) {
       product_cost: parseFloat(service.product_cost),
       market_price: service.market_price ? parseFloat(service.market_price) : null,
       duration_minutes: service.duration_minutes,
-      image_url: service.image_url
+      image_url: service.image_url,
+      about: service.about || null
     });
   } catch (error) {
     logger.error('Get service by ID error:', error);
