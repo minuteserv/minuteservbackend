@@ -46,6 +46,8 @@ async function createService(req, res) {
       market_price,
       duration_minutes = 60,
       image_url,
+      brand,
+      about,
       is_active = true
     } = req.body;
 
@@ -63,6 +65,8 @@ async function createService(req, res) {
         market_price: market_price ? parseFloat(market_price) : null,
         duration_minutes: parseInt(duration_minutes),
         image_url: image_url || null,
+        brand: brand || null,
+        about: about || null,
         is_active
       })
       .select()
